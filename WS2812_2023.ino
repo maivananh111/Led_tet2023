@@ -6,18 +6,27 @@
 
 #define NUM_LEDS 120
 #define DATA_PIN 7
+#define LED_TYPE    WS2812
+#define COLOR_ORDER RGB
+
 #define NUM_SPARKS 60 // max number (could be NUM_LEDS / 2);
 #define NUM_LOOP 1
+#define UPDATES_PER_SECOND 100
+#define BRIGHTNESS  255
 
 CRGB leds[NUM_LEDS]; 
+CRGBPalette16 currentPalette;
+TBlendType    currentBlending;
+extern CRGBPalette16 myRedWhiteBluePalette;
+extern const TProgmemPalette16 myRedWhiteBluePalette_p PROGMEM;
+
 float sparkPos[NUM_SPARKS];
 float sparkVel[NUM_SPARKS];
 float sparkCol[NUM_SPARKS];
 float flarePos;
 float gravity = -.004;
 
-int firework_mode = 0;
-
+int mode = 0;
 
 void flare_start(void);
 
@@ -35,14 +44,19 @@ void explodeLoop1(int x, int y);
 void explodeLoop2_set(int x, int y, int pos, int top, int len);
 void explodeLoop2(int x, int y, int top, int len);
 
+void mode1(void);
 
 void setup() {
     Serial.begin(9600);
-    FastLED.addLeds<NEOPIXEL, DATA_PIN>(leds, NUM_LEDS);
+//    FastLED.addLeds<NEOPIXEL, DATA_PIN>(leds, NUM_LEDS);
+    FastLED.addLeds<LED_TYPE, DATA_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection( TypicalLEDStrip );
+
+    currentPalette = RainbowColors_p;
+    currentBlending = LINEARBLEND;
 }
 
 void loop() {   
-    Serial.println(firework_mode);
+    Serial.println(mode);
 
     for(int num=0; num< NUM_LOOP; num++){
         int color = random(255);
@@ -51,7 +65,7 @@ void loop() {
         int exploder_color1 = random(0, 7) * 40;
         int exploder_color2 = random(0, 7) * 40;
 
-        if(firework_mode == 0){
+        if(mode == 0){
             flare_start();
             show_flare_up(color, flarePos, len); 
             clear_flare_up(color, flarePos, len);
@@ -62,7 +76,7 @@ void loop() {
             flare_blink2(100, random(255));
         }
 
-        else if(firework_mode == 1){
+        else if(mode == 1){
             flare(exploder_color1, exploder_color2);
             
             explodeLoop2(exploder_color1, exploder_color2, flarePos, len);
@@ -71,14 +85,14 @@ void loop() {
             flare_blink2(100, random(255));
         }
 
-        else if(firework_mode == 2){
+        else if(mode == 2){
             flare(exploder_color1, exploder_color2);
             
             explodeLoop1(exploder_color1, exploder_color2);
             flare_blink2(100, random(255));
         }
 
-        else if(firework_mode == 3){
+        else if(mode == 3){
             flare_start();
             show_flare_up(color, flarePos, len); 
             clear_flare_up(color, flarePos, len);
@@ -95,8 +109,18 @@ void loop() {
         FastLED.show();
         delay(random(500, 3000));
     }
-    firework_mode++;
-    if(firework_mode == 4) firework_mode = 0;
+
+    if(mode == 4){
+        FastLED.setBrightness(  BRIGHTNESS );
+        currentPalette = RainbowColors_p;
+        currentBlending = LINEARBLEND;
+        for(int i=0; i<3000; i++){
+            mode1();
+        }
+    }
+
+    mode++;
+    if(mode == 5) mode = 0;
 }
 
 void flare_start(void){
@@ -315,3 +339,94 @@ void flare_blink2(int num, int color){
         FastLED.clear();
     }
 }
+
+
+void mode1(void){
+    ChangePalettePeriodically();
+    
+    static uint8_t startIndex = 0;
+    startIndex = startIndex + 1; /* motion speed */
+    
+    FillLEDsFromPaletteColors( startIndex);
+    
+    FastLED.show();
+    FastLED.delay(1000 / UPDATES_PER_SECOND);
+}
+
+void FillLEDsFromPaletteColors( uint8_t colorIndex){
+    uint8_t brightness = 255;
+    
+    for( int i = 0; i < NUM_LEDS; ++i) {
+        leds[i] = ColorFromPalette( currentPalette, colorIndex, brightness, currentBlending);
+        colorIndex += 3;
+    }
+}
+
+void ChangePalettePeriodically(){
+    uint8_t secondHand = (millis() / 1000) % 60;
+    static uint8_t lastSecond = 99;
+    
+    if( lastSecond != secondHand) {
+        lastSecond = secondHand;
+        if( secondHand ==  0)  { currentPalette = RainbowColors_p;         currentBlending = LINEARBLEND; }
+        if( secondHand == 10)  { currentPalette = RainbowStripeColors_p;   currentBlending = NOBLEND;  }
+        if( secondHand == 15)  { currentPalette = RainbowStripeColors_p;   currentBlending = LINEARBLEND; }
+        if( secondHand == 20)  { SetupPurpleAndGreenPalette();             currentBlending = LINEARBLEND; }
+        if( secondHand == 25)  { SetupTotallyRandomPalette();              currentBlending = LINEARBLEND; }
+        if( secondHand == 30)  { SetupBlackAndWhiteStripedPalette();       currentBlending = NOBLEND; }
+        if( secondHand == 35)  { SetupBlackAndWhiteStripedPalette();       currentBlending = LINEARBLEND; }
+        if( secondHand == 40)  { currentPalette = CloudColors_p;           currentBlending = LINEARBLEND; }
+        if( secondHand == 45)  { currentPalette = PartyColors_p;           currentBlending = LINEARBLEND; }
+        if( secondHand == 50)  { currentPalette = myRedWhiteBluePalette_p; currentBlending = NOBLEND;  }
+        if( secondHand == 55)  { currentPalette = myRedWhiteBluePalette_p; currentBlending = LINEARBLEND; }
+    }
+}
+
+void SetupTotallyRandomPalette(){
+    for( int i = 0; i < 16; ++i) {
+        currentPalette[i] = CHSV( random8(), 255, random8());
+    }
+}
+
+void SetupBlackAndWhiteStripedPalette(){
+    // 'black out' all 16 palette entries...
+    fill_solid( currentPalette, 16, CRGB::Black);
+    // and set every fourth one to white.
+    currentPalette[0] = CRGB::White;
+    currentPalette[4] = CRGB::White;
+    currentPalette[8] = CRGB::White;
+    currentPalette[12] = CRGB::White;
+    
+}
+
+void SetupPurpleAndGreenPalette(){
+    CRGB purple = CHSV( HUE_PURPLE, 255, 255);
+    CRGB green  = CHSV( HUE_GREEN, 255, 255);
+    CRGB black  = CRGB::Black;
+    
+    currentPalette = CRGBPalette16(
+                                   green,  green,  black,  black,
+                                   purple, purple, black,  black,
+                                   green,  green,  black,  black,
+                                   purple, purple, black,  black );
+}
+const TProgmemPalette16 myRedWhiteBluePalette_p PROGMEM ={
+    CRGB::Red,
+    CRGB::Gray, 
+    CRGB::Blue,
+    CRGB::Black,
+    
+    CRGB::Red,
+    CRGB::Gray,
+    CRGB::Blue,
+    CRGB::Black,
+    
+    CRGB::Red,
+    CRGB::Red,
+    CRGB::Gray,
+    CRGB::Gray,
+    CRGB::Blue,
+    CRGB::Blue,
+    CRGB::Black,
+    CRGB::Black
+};
